@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard de Finanzas</title>
+    
+    <!-- Favicon para la pestaña del navegador -->
+    <link rel="icon" type="image/png" href="logo.png">
+
+    <!-- PWA Configuración -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#bbf7d0">
+    <link rel="apple-touch-icon" href="logo.png">
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
@@ -18,7 +27,7 @@
         <!-- Encabezado y Filtro de Mes -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-6">
             <div class="text-center md:text-left flex items-center gap-4">
-                <img src="logo.ico" alt="Logo" class="h-16 object-contain" onerror="this.style.display='none'">
+                <img src="logo.png" alt="Logo" class="h-16 object-contain" onerror="this.style.display='none'">
                 <h1 class="text-3xl font-bold text-gray-800">Finanzas del Pichichi</h1>
             </div>
             <div class="mt-4 md:mt-0 bg-gray-100 p-2 rounded-lg border border-gray-200 shadow-sm flex items-center gap-2">
@@ -78,11 +87,9 @@
                         </div>
                     </div>
 
-                    <!-- NUEVO: Selección de Cuenta -->
                     <div>
                         <label class="block text-sm font-medium text-gray-700">Cuenta / Origen de los fondos</label>
                         <select id="transactionAccount" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500 bg-white">
-                            <!-- Se llena dinámicamente -->
                         </select>
                         <p class="text-xs text-gray-500 mt-1"><i class="fa-solid fa-circle-info"></i> El monto se sumará o restará de esta cuenta.</p>
                     </div>
@@ -123,16 +130,14 @@
                 <h3 class="text-lg font-bold mt-6 mb-2 text-gray-700"><i class="fa-solid fa-list mr-2"></i>Movimientos del Mes</h3>
                 <div class="max-h-64 overflow-y-auto bg-gray-50 rounded-lg border border-gray-200">
                     <ul id="transactionList" class="divide-y divide-gray-200 px-3">
-                        <!-- Las transacciones aparecerán aquí -->
                     </ul>
                 </div>
             </div>
 
-            <!-- COLUMNA DERECHA: Ahorros y Gráfico -->
+            <!-- COLUMNA DERECHA: Cuentas y Gráfico -->
             <div>
                 <h2 class="text-xl font-bold mb-4 text-gray-700"><i class="fa-solid fa-wallet mr-2"></i>Mis Cuentas / Ahorros</h2>
                 
-                <!-- Tarjetas resumen de ahorros (Saldos Reales) -->
                 <div class="grid grid-cols-3 gap-2 mb-4 text-center">
                     <div class="bg-blue-50 p-2 rounded-lg border border-blue-200 shadow-sm">
                         <p class="text-xs font-bold text-blue-600">EUR</p>
@@ -188,11 +193,9 @@
                 
                 <div class="bg-gray-50 p-3 rounded-lg border border-gray-200 max-h-40 overflow-y-auto mb-6">
                     <ul id="savingsList" class="divide-y divide-gray-200 text-sm">
-                        <!-- Los ahorros aparecerán aquí -->
                     </ul>
                 </div>
 
-                <!-- Gráfico de Gastos -->
                 <h2 class="text-lg font-bold mb-2 text-gray-700 text-center"><i class="fa-solid fa-chart-pie mr-2"></i>Gastos por Categoría (Mes)</h2>
                 <div class="relative h-48 w-full flex justify-center bg-gray-50 rounded-lg border border-gray-200 p-2">
                     <canvas id="expenseChart"></canvas>
@@ -202,7 +205,7 @@
 
         <hr class="my-6 border-gray-300">
 
-        <!-- Acciones de Datos (Exportar / Importar) -->
+        <!-- Gestión de Datos -->
         <h3 class="text-md font-bold mb-3 text-gray-700 text-center"><i class="fa-solid fa-database mr-2"></i>Gestión de Datos</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
             <button onclick="exportToCSV()" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-bold text-gray-800 bg-yellow-400 hover:bg-yellow-500 transition-colors">
@@ -219,15 +222,13 @@
 
     </div>
 
-    <!-- Lógica de JavaScript -->
+    <!-- Scripts (Lógica y PWA) -->
     <script>
-        // Variables Globales
         let targetGasto = parseFloat(localStorage.getItem('targetGasto')) || 1000.00; 
         let transactions = JSON.parse(localStorage.getItem('finances')) || [];
         let savings = JSON.parse(localStorage.getItem('savingsData')) || [];
         let myChart = null; 
 
-        // Aseguramos que todas las cuentas antiguas tengan un ID único
         savings.forEach(s => {
             if(!s.id) s.id = Math.random().toString(36).substr(2, 9);
         });
@@ -282,7 +283,6 @@
             return '';
         }
 
-        // Actualiza las opciones del menú de cuentas en el formulario
         function updateAccountDropdown() {
             const currentVal = transactionAccount.value;
             transactionAccount.innerHTML = '';
@@ -306,7 +306,7 @@
 
         function updateDashboard() {
             updateAccountDropdown();
-            updateSavings(); // Recalcula ahorros por si hubo cambios en transacciones
+            updateSavings();
 
             const filterValue = monthFilter.value; 
             let income = 0;
@@ -336,7 +336,6 @@
                     displayDate = `${d}/${m}/${y}`;
                 }
 
-                // Buscar nombre de cuenta
                 const acc = savings.find(s => s.id == t.accountId);
                 const accName = acc ? `${acc.type}` : 'Sin cuenta';
 
@@ -396,7 +395,6 @@
             }
 
             const editIndex = document.getElementById('editTxIndex').value;
-            
             let dateVal = document.getElementById('date').value;
             if(!dateVal) dateVal = new Date().toISOString().split('T')[0];
 
@@ -467,8 +465,7 @@
             let totals = { 'ARS': 0, 'USD': 0, 'EUR': 0 };
 
             savings.forEach((s, index) => {
-                // Cálculo de SALDO ACTUAL (Saldo base + Ingresos - Egresos)
-                let currentBalance = s.amount; // Saldo inicial
+                let currentBalance = s.amount; 
                 
                 transactions.forEach(t => {
                     if(t.accountId == s.id) {
@@ -521,7 +518,6 @@
             };
 
             if(editIndex > -1) {
-                // Mantener el ID original si estamos editando
                 newSaving.id = savings[editIndex].id;
                 savings[editIndex] = newSaving;
                 cancelEditSv();
@@ -532,7 +528,7 @@
             }
 
             localStorage.setItem('savingsData', JSON.stringify(savings));
-            updateDashboard(); // Recarga todo para refrescar los dropdowns
+            updateDashboard(); 
         });
 
         function deleteSaving(index) {
@@ -690,6 +686,15 @@
             };
             reader.readAsText(file);
             event.target.value = ''; 
+        }
+
+        // Registro de PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => console.log('ServiceWorker registrado con éxito'))
+                    .catch(err => console.log('Error al registrar ServiceWorker: ', err));
+            });
         }
 
         updateDashboard();

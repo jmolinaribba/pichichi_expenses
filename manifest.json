@@ -1,0 +1,16 @@
+{
+  "name": "Finanzas del Pichichi",
+  "short_name": "Pichichi",
+  "description": "Dashboard personal de finanzas",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#bbf7d0",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}
