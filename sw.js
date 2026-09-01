@@ -1,6 +1,6 @@
 // Subí este número cada vez que publiques cambios en index.html / assets,
 // para forzar que los usuarios reciban la versión nueva.
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `pichichi-cache-${CACHE_VERSION}`;
 
 // Archivos propios de la app (app shell)
@@ -119,3 +119,4 @@ async function cacheFirst(request) {
     });
   }
 }
+

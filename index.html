@@ -205,11 +205,54 @@
                     </ul>
                 </div>
 
+                <!-- Objetivos / Metas -->
+                <h2 class="text-xl font-bold mb-4 text-gray-700"><i class="fa-solid fa-bullseye mr-2"></i>Mis Objetivos</h2>
+                <form id="goalForm" class="grid grid-cols-3 gap-2 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner items-end">
+                    <div class="col-span-3 sm:col-span-1">
+                        <label class="block text-xs font-medium text-gray-700">Nombre</label>
+                        <input type="text" id="goalName" required maxlength="60" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm focus:ring-teal-500 focus:border-teal-500" placeholder="Ej: Vacaciones">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700">Meta</label>
+                        <input type="number" id="goalTarget" required min="0.01" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm focus:ring-teal-500 focus:border-teal-500" placeholder="1000">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700">Moneda</label>
+                        <select id="goalCurrency" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm focus:ring-teal-500 focus:border-teal-500">
+                            <option value="EUR">EUR</option>
+                            <option value="USD">USD</option>
+                            <option value="ARS">ARS</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="col-span-3 py-2 px-4 rounded-md shadow-sm text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 transition-colors">
+                        <i class="fa-solid fa-plus mr-1"></i>Crear objetivo
+                    </button>
+                </form>
+
+                <div id="goalsList" class="space-y-3 mb-6"></div>
+
                 <h2 id="chartTitle" class="text-lg font-bold mb-2 text-gray-700 text-center"><i class="fa-solid fa-chart-pie mr-2"></i>Gastos por Categoría (EUR)</h2>
                 <div class="relative h-48 w-full flex justify-center bg-gray-50 rounded-lg border border-gray-200 p-2">
                     <canvas id="expenseChart" role="img" aria-label="Gráfico de gastos por categoría"></canvas>
                 </div>
             </div>
+        </div>
+
+        <hr class="my-6 border-gray-300">
+
+        <!-- Evolución Anual del Patrimonio -->
+        <div class="mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-2 gap-2">
+                <h2 class="text-lg font-bold text-gray-700"><i class="fa-solid fa-chart-line mr-2"></i>Evolución Anual del Patrimonio</h2>
+                <div class="flex items-center gap-2">
+                    <label for="yearFilter" class="text-sm text-gray-600">Año:</label>
+                    <select id="yearFilter" class="text-sm rounded border border-gray-300 p-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                </div>
+            </div>
+            <div class="relative h-56 w-full bg-gray-50 rounded-lg border border-gray-200 p-2">
+                <canvas id="annualChart" role="img" aria-label="Evolución del patrimonio a lo largo del año"></canvas>
+            </div>
+            <p class="text-[10px] text-gray-400 mt-1 text-center">Cada línea muestra tu patrimonio total (cuentas + objetivos) en esa moneda, acumulado al cierre de cada mes. Las monedas no se convierten entre sí.</p>
         </div>
 
         <hr class="my-6 border-gray-300">
@@ -323,12 +366,16 @@
             targetCurrency: safeGetItem('targetCurrency') || 'EUR',
             transactions: safeParse(safeGetItem('finances'), []),
             savings: safeParse(safeGetItem('savingsData'), []),
+            goals: safeParse(safeGetItem('goals'), []),
+            goalContributions: safeParse(safeGetItem('goalContributions'), []),
             chart: null
         };
 
         // Validaciones defensivas por si el localStorage tiene datos corruptos
         if (!Array.isArray(state.transactions)) state.transactions = [];
         if (!Array.isArray(state.savings)) state.savings = [];
+        if (!Array.isArray(state.goals)) state.goals = [];
+        if (!Array.isArray(state.goalContributions)) state.goalContributions = [];
 
         state.transactions = state.transactions.filter(t => t && typeof t === 'object' && Number.isFinite(parseFloat(t.amount)));
         state.transactions.forEach(t => { t.amount = parseFloat(t.amount) || 0; });
@@ -340,6 +387,24 @@
             if (!['EUR', 'USD', 'ARS'].includes(s.currency)) s.currency = 'EUR';
         });
         persistSavings();
+
+        state.goals = state.goals.filter(g => g && typeof g === 'object' && Number.isFinite(parseFloat(g.targetAmount)));
+        state.goals.forEach(g => {
+            g.targetAmount = parseFloat(g.targetAmount) || 0;
+            if (!g.id) g.id = genId();
+            if (!['EUR', 'USD', 'ARS'].includes(g.currency)) g.currency = 'EUR';
+            if (!g.name) g.name = 'Objetivo';
+        });
+
+        state.goalContributions = state.goalContributions.filter(c =>
+            c && typeof c === 'object' && Number.isFinite(parseFloat(c.amount)) && c.goalId
+        );
+        state.goalContributions.forEach(c => {
+            c.amount = parseFloat(c.amount) || 0;
+            if (!c.id) c.id = genId();
+        });
+        persistGoals();
+        persistGoalContributions();
 
         const categoryIcons = {
             'Comida': '<i class="fa-solid fa-utensils text-orange-500 w-5"></i>',
@@ -355,17 +420,21 @@
          * ========================================================= */
         const form = document.getElementById('financeForm');
         const savingsForm = document.getElementById('savingsForm');
+        const goalForm = document.getElementById('goalForm');
         const currencySummaryEl = document.getElementById('currencySummary');
         const transactionList = document.getElementById('transactionList');
         const savingsList = document.getElementById('savingsList');
+        const goalsList = document.getElementById('goalsList');
         const targetBar = document.getElementById('targetBar');
         const targetStatus = document.getElementById('targetStatus');
         const budgetSavedHint = document.getElementById('budgetSavedHint');
         const monthFilter = document.getElementById('monthFilter');
+        const yearFilter = document.getElementById('yearFilter');
         const budgetInput = document.getElementById('budgetInput');
         const budgetCurrency = document.getElementById('budgetCurrency');
         const transactionAccount = document.getElementById('transactionAccount');
         const chartTitle = document.getElementById('chartTitle');
+        let annualChartInstance = null;
 
         budgetInput.value = state.targetGasto;
         budgetCurrency.value = state.targetCurrency;
@@ -388,6 +457,12 @@
             safeSetItem('targetGasto', state.targetGasto);
             safeSetItem('targetCurrency', state.targetCurrency);
         }
+        function persistGoals() {
+            return safeSetItem('goals', JSON.stringify(state.goals));
+        }
+        function persistGoalContributions() {
+            return safeSetItem('goalContributions', JSON.stringify(state.goalContributions));
+        }
 
         /* =========================================================
          * Cuentas / Ahorros
@@ -401,7 +476,19 @@
                     balance += (t.type === 'ingreso') ? t.amount : -t.amount;
                 }
             });
+            // Las transferencias a objetivos también salen de la cuenta origen
+            state.goalContributions.forEach(c => {
+                if (c.accountId === accountId) {
+                    balance -= c.amount;
+                }
+            });
             return balance;
+        }
+
+        function getGoalSaved(goalId) {
+            return state.goalContributions
+                .filter(c => c.goalId === goalId)
+                .reduce((sum, c) => sum + c.amount, 0);
         }
 
         function updateAccountDropdown() {
@@ -462,6 +549,154 @@
             document.getElementById('totalUSD').innerText = formatMoney(totals.USD, 'USD');
             document.getElementById('totalEUR').innerText = formatMoney(totals.EUR, 'EUR');
         }
+
+        /* =========================================================
+         * Objetivos / Metas
+         * ========================================================= */
+        function renderGoals() {
+            goalsList.innerHTML = '';
+
+            if (state.goals.length === 0) {
+                goalsList.innerHTML = '<p class="text-center text-gray-500 text-sm">Todavía no creaste ningún objetivo. Usá el formulario de arriba para empezar.</p>';
+                return;
+            }
+
+            state.goals.forEach((g, index) => {
+                const saved = getGoalSaved(g.id);
+                let pct = g.targetAmount > 0 ? (saved / g.targetAmount) * 100 : 0;
+                if (!Number.isFinite(pct) || pct < 0) pct = 0;
+                const displayPct = Math.min(pct, 100);
+                const completed = g.targetAmount > 0 && saved >= g.targetAmount;
+
+                const eligibleAccounts = state.savings.filter(s => s.currency === g.currency);
+
+                const card = document.createElement('div');
+                card.className = `p-4 rounded-lg border shadow-sm ${completed ? 'bg-teal-50 border-teal-300' : 'bg-gray-50 border-gray-200'}`;
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <p class="font-bold text-gray-800 text-sm">
+                                ${completed ? '<i class="fa-solid fa-circle-check text-teal-600 mr-1"></i>' : ''}${escapeHTML(g.name)}
+                            </p>
+                            <p class="text-xs text-gray-500">${formatMoney(saved, g.currency)} de ${formatMoney(g.targetAmount, g.currency)}</p>
+                        </div>
+                        <div class="flex gap-2 shrink-0">
+                            <button data-action="toggle-goal-form" data-index="${index}" aria-label="Transferir saldo a ${escapeHTML(g.name)}" class="text-teal-600 hover:text-teal-800 text-sm"><i class="fa-solid fa-right-left"></i></button>
+                            <button data-action="delete-goal" data-index="${index}" aria-label="Eliminar objetivo ${escapeHTML(g.name)}" class="text-red-400 hover:text-red-600 text-sm"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-3">
+                        <div class="h-3 rounded-full transition-all duration-500 ${completed ? 'bg-teal-500' : 'bg-indigo-500'}" style="width: ${displayPct}%"></div>
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-1">${pct.toFixed(1)}% completado</p>
+
+                    <div id="goalContribForm-${index}" class="hidden mt-3 pt-3 border-t border-gray-200 flex flex-wrap gap-2 items-end">
+                        ${eligibleAccounts.length === 0 ? `
+                            <p class="text-xs text-gray-500">No tenés cuentas en ${escapeHTML(g.currency)} para transferir. Creá una en "Mis Cuentas / Ahorros".</p>
+                        ` : `
+                            <div class="flex-1 min-w-[120px]">
+                                <label class="block text-[10px] font-medium text-gray-700">Desde cuenta</label>
+                                <select data-goal-account="${index}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-1.5 border text-xs">
+                                    ${eligibleAccounts.map(a => `<option value="${a.id}">${escapeHTML(a.type)} (${formatMoney(getAccountBalance(a.id), a.currency)})</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="w-24">
+                                <label class="block text-[10px] font-medium text-gray-700">Monto</label>
+                                <input type="number" data-goal-amount="${index}" min="0.01" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-1.5 border text-xs">
+                            </div>
+                            <button data-action="contribute-goal" data-index="${index}" class="py-1.5 px-3 rounded-md text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 transition-colors">Transferir</button>
+                        `}
+                    </div>
+                `;
+                goalsList.appendChild(card);
+            });
+        }
+
+        goalForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const name = document.getElementById('goalName').value.trim();
+            const target = parseFloat(document.getElementById('goalTarget').value);
+            const currency = document.getElementById('goalCurrency').value;
+
+            if (!name) {
+                alert('Ingresá un nombre para el objetivo.');
+                return;
+            }
+            if (!Number.isFinite(target) || target <= 0) {
+                alert('Ingresá una meta válida mayor a 0.');
+                return;
+            }
+
+            state.goals.push({
+                id: genId(),
+                name,
+                targetAmount: target,
+                currency,
+                createdAt: new Date().toISOString()
+            });
+            persistGoals();
+            goalForm.reset();
+            document.getElementById('goalCurrency').value = 'EUR';
+            updateDashboard();
+        });
+
+        goalsList.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const index = Number(btn.dataset.index);
+            const g = state.goals[index];
+            if (!g) return;
+
+            if (btn.dataset.action === 'toggle-goal-form') {
+                const el = document.getElementById(`goalContribForm-${index}`);
+                if (el) el.classList.toggle('hidden');
+            }
+
+            if (btn.dataset.action === 'delete-goal') {
+                if (confirm(`¿Eliminar el objetivo "${g.name}"? El saldo transferido volverá a reflejarse en sus cuentas de origen.`)) {
+                    state.goalContributions = state.goalContributions.filter(c => c.goalId !== g.id);
+                    state.goals.splice(index, 1);
+                    persistGoals();
+                    persistGoalContributions();
+                    updateDashboard();
+                }
+            }
+
+            if (btn.dataset.action === 'contribute-goal') {
+                const accSelect = document.querySelector(`[data-goal-account="${index}"]`);
+                const amountInput = document.querySelector(`[data-goal-amount="${index}"]`);
+                const accountId = accSelect ? accSelect.value : '';
+                const amount = amountInput ? parseFloat(amountInput.value) : NaN;
+
+                if (!accountId) {
+                    alert('Seleccioná una cuenta de origen.');
+                    return;
+                }
+                if (!Number.isFinite(amount) || amount <= 0) {
+                    alert('Ingresá un monto válido mayor a 0.');
+                    return;
+                }
+
+                const availableBalance = getAccountBalance(accountId);
+                if (amount > availableBalance) {
+                    const proceed = confirm(
+                        `El monto supera el saldo disponible en esa cuenta (${formatMoney(availableBalance, g.currency)}). ¿Transferir igual?`
+                    );
+                    if (!proceed) return;
+                }
+
+                state.goalContributions.push({
+                    id: genId(),
+                    goalId: g.id,
+                    accountId,
+                    amount,
+                    date: new Date().toISOString().split('T')[0]
+                });
+                persistGoalContributions();
+                updateDashboard();
+            }
+        });
 
         /* =========================================================
          * Cálculo de totales del mes (separados por moneda real de cada cuenta,
@@ -639,11 +874,123 @@
         }
 
         /* =========================================================
+         * Evolución Anual del Patrimonio (línea de tiempo)
+         * ========================================================= */
+        function getAvailableYears() {
+            const years = new Set([new Date().getFullYear()]);
+            state.transactions.forEach(t => {
+                const ym = getYearMonth(t.date);
+                if (ym) years.add(Number(ym.substring(0, 4)));
+            });
+            return Array.from(years).sort((a, b) => b - a);
+        }
+
+        function populateYearFilter() {
+            const years = getAvailableYears();
+            const currentSelection = yearFilter.value ? Number(yearFilter.value) : new Date().getFullYear();
+            yearFilter.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+            yearFilter.value = years.includes(currentSelection) ? currentSelection : years[0];
+        }
+
+        // Calcula, mes a mes, el patrimonio total acumulado por moneda (saldo inicial
+        // de las cuentas + ingresos/gastos históricos hasta el cierre de cada mes).
+        // Las transferencias a objetivos no se restan acá: mover plata de una cuenta
+        // a un objetivo no crea ni destruye patrimonio, solo lo reubica.
+        function computeAnnualSeries(year) {
+            const runningByCurrency = { EUR: 0, USD: 0, ARS: 0 };
+            state.savings.forEach(s => {
+                runningByCurrency[s.currency] = (runningByCurrency[s.currency] || 0) + s.amount;
+            });
+
+            const sortedTx = state.transactions
+                .filter(t => t.date)
+                .slice()
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+            const series = { EUR: [], USD: [], ARS: [] };
+            let cursor = 0;
+
+            for (let month = 1; month <= 12; month++) {
+                // Usamos el día 31 como límite superior "seguro": la comparación de
+                // strings ISO (YYYY-MM-DD) sigue funcionando bien aunque el mes no tenga día 31.
+                const cutoff = `${year}-${String(month).padStart(2, '0')}-31`;
+
+                while (cursor < sortedTx.length && sortedTx[cursor].date <= cutoff) {
+                    const t = sortedTx[cursor];
+                    const account = state.savings.find(s => s.id === t.accountId);
+                    const currency = account ? account.currency : 'EUR';
+                    if (!(currency in runningByCurrency)) runningByCurrency[currency] = 0;
+                    runningByCurrency[currency] += (t.type === 'ingreso') ? t.amount : -t.amount;
+                    cursor++;
+                }
+
+                Object.keys(series).forEach(cur => {
+                    series[cur].push(runningByCurrency[cur] || 0);
+                });
+            }
+
+            return series;
+        }
+
+        function renderAnnualChart() {
+            populateYearFilter();
+            const year = Number(yearFilter.value);
+            const series = computeAnnualSeries(year);
+            const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            const colors = { EUR: '#2563EB', USD: '#16A34A', ARS: '#6B7280' };
+
+            const datasets = Object.keys(series)
+                .filter(cur => {
+                    const hasAccount = state.savings.some(s => s.currency === cur);
+                    const hasTx = state.transactions.some(t => {
+                        const acc = state.savings.find(s => s.id === t.accountId);
+                        return (acc ? acc.currency : 'EUR') === cur;
+                    });
+                    return hasAccount || hasTx;
+                })
+                .map(cur => ({
+                    label: cur,
+                    data: series[cur],
+                    borderColor: colors[cur] || '#111827',
+                    backgroundColor: (colors[cur] || '#111827') + '22',
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 3
+                }));
+
+            const ctx = document.getElementById('annualChart').getContext('2d');
+            if (annualChartInstance) annualChartInstance.destroy();
+
+            if (datasets.length === 0) {
+                annualChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: months, datasets: [{ label: 'Sin datos', data: new Array(12).fill(0), borderColor: '#E5E7EB' }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+                return;
+            }
+
+            annualChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: { labels: months, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: false } }
+                }
+            });
+        }
+
+        yearFilter.addEventListener('change', renderAnnualChart);
+
+        /* =========================================================
          * Orquestador principal
          * ========================================================= */
         function updateDashboard() {
             updateAccountDropdown();
             updateSavings();
+            renderGoals();
 
             const filterValue = monthFilter.value;
             const { totals, expenseCategories } = computeMonthTotals(filterValue);
@@ -652,6 +999,8 @@
             renderBudget(totals);
             renderTransactions(filterValue);
             updateChart(expenseCategories);
+
+            renderAnnualChart();
         }
 
         /* =========================================================
@@ -802,7 +1151,7 @@
         }
 
         function deleteSaving(index) {
-            if (confirm('¿Seguro que deseas eliminar esta cuenta? Las transacciones asociadas quedarán sin cuenta asignada.')) {
+            if (confirm('¿Seguro que deseas eliminar esta cuenta? Las transacciones y transferencias a objetivos asociadas quedarán sin cuenta de origen, pero no se borrará el saldo ya ahorrado en tus objetivos.')) {
                 state.savings.splice(index, 1);
                 persistSavings();
                 updateDashboard();
@@ -876,6 +1225,16 @@
                 csvRows.push(`${s.currency},${s.type},${s.amount},${currentBalance}`);
             });
 
+            csvRows.push('', '--- OBJETIVOS ---');
+            const headersG = ['NOMBRE', 'MONEDA', 'META', 'AHORRADO', 'PORCENTAJE'];
+            csvRows.push(headersG.join(','));
+            state.goals.forEach(g => {
+                const saved = getGoalSaved(g.id);
+                const pct = g.targetAmount > 0 ? ((saved / g.targetAmount) * 100).toFixed(1) : '0.0';
+                const name = `"${String(g.name).replace(/"/g, '""')}"`;
+                csvRows.push(`${name},${g.currency},${g.targetAmount},${saved},${pct}%`);
+            });
+
             const csvString = csvRows.join('\n');
             const blob = new Blob(['\uFEFF' + csvString], { type: 'text/csv;charset=utf-8;' });
             downloadBlob(blob, `finanzas_${new Date().toISOString().split('T')[0]}.csv`);
@@ -887,6 +1246,8 @@
                 targetCurrency: state.targetCurrency,
                 transactions: state.transactions,
                 savings: state.savings,
+                goals: state.goals,
+                goalContributions: state.goalContributions,
                 exportDate: new Date().toISOString()
             };
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -916,7 +1277,19 @@
             const svOk = data.savings.every(s =>
                 s && typeof s === 'object' && Number.isFinite(parseFloat(s.amount))
             );
-            return txOk && svOk;
+
+            // Los backups viejos (Fase 1) no tienen objetivos: los tratamos como opcionales
+            // para que se puedan seguir importando sin romper nada.
+            const goalsOk = data.goals === undefined || (
+                Array.isArray(data.goals) &&
+                data.goals.every(g => g && typeof g === 'object' && Number.isFinite(parseFloat(g.targetAmount)))
+            );
+            const contribOk = data.goalContributions === undefined || (
+                Array.isArray(data.goalContributions) &&
+                data.goalContributions.every(c => c && typeof c === 'object' && Number.isFinite(parseFloat(c.amount)) && c.goalId)
+            );
+
+            return txOk && svOk && goalsOk && contribOk;
         }
 
         function importFromJSON(event) {
@@ -957,11 +1330,25 @@
                         amount: parseFloat(s.amount) || 0,
                         currency: ['EUR', 'USD', 'ARS'].includes(s.currency) ? s.currency : 'EUR'
                     }));
+                    state.goals = (data.goals || []).map(g => ({
+                        ...g,
+                        id: g.id || genId(),
+                        targetAmount: parseFloat(g.targetAmount) || 0,
+                        currency: ['EUR', 'USD', 'ARS'].includes(g.currency) ? g.currency : 'EUR',
+                        name: g.name || 'Objetivo'
+                    }));
+                    state.goalContributions = (data.goalContributions || []).map(c => ({
+                        ...c,
+                        id: c.id || genId(),
+                        amount: parseFloat(c.amount) || 0
+                    }));
                     state.targetGasto = Number.isFinite(parseFloat(data.targetGasto)) ? parseFloat(data.targetGasto) : 1000;
                     state.targetCurrency = ['EUR', 'USD', 'ARS'].includes(data.targetCurrency) ? data.targetCurrency : 'EUR';
 
                     persistTransactions();
                     persistSavings();
+                    persistGoals();
+                    persistGoalContributions();
                     persistBudget();
 
                     budgetInput.value = state.targetGasto;
@@ -1000,3 +1387,4 @@
     </script>
 </body>
 </html>
+
