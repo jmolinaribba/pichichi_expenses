@@ -48,14 +48,50 @@
             No se pudo guardar en este dispositivo. Verificá que el almacenamiento local esté habilitado (por ejemplo, salir del modo incógnito).
         </div>
 
+        <!-- Resumen Inteligente -->
+        <div class="mb-6">
+            <div class="bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-xl p-5 shadow-lg mb-4 text-center">
+                <p class="text-xs uppercase tracking-wide text-indigo-200 font-semibold mb-1">Patrimonio Total</p>
+                <p id="heroPatrimonio" class="text-3xl font-bold">—</p>
+                <p id="heroPatrimonioDelta" class="text-sm mt-1 text-indigo-100">Sin datos suficientes todavía</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                    <p class="text-xs font-bold text-green-700 uppercase tracking-wide">Ingresos (mes)</p>
+                    <p id="heroIncome" class="text-lg font-bold text-green-800">—</p>
+                    <p id="heroIncomeDelta" class="text-xs text-green-600 mt-0.5">—</p>
+                </div>
+                <div class="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                    <p class="text-xs font-bold text-red-700 uppercase tracking-wide">Gastos (mes)</p>
+                    <p id="heroExpense" class="text-lg font-bold text-red-800">—</p>
+                    <p id="heroExpenseDelta" class="text-xs text-red-600 mt-0.5">—</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                <p class="text-sm font-bold text-gray-700 mb-2"><i class="fa-solid fa-chart-simple mr-1"></i>Categorías de este mes</p>
+                <div id="heroCategoryBars" class="space-y-1.5"></div>
+            </div>
+
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                <i class="fa-solid fa-robot text-amber-600 mt-0.5"></i>
+                <p id="heroInsight" class="text-xs text-amber-800">Todavía no hay suficientes datos para un insight.</p>
+            </div>
+        </div>
+
         <!-- Resumen por moneda -->
         <div id="currencySummary" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 text-center"></div>
 
         <!-- Presupuesto / Target -->
         <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 shadow-sm mb-6">
-            <div class="flex flex-col md:flex-row justify-between items-center mb-2">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-2 gap-2">
                 <p class="text-sm text-blue-700 font-semibold mb-2 md:mb-0"><i class="fa-solid fa-bullseye mr-1"></i> Presupuesto Mensual</p>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap justify-end">
+                    <label class="flex items-center gap-1 text-[11px] text-blue-700 select-none" title="Calcula el presupuesto automáticamente como el promedio de tus últimos 3 meses completos">
+                        <input type="checkbox" id="dynamicBudgetToggle" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        Dinámico (prom. 3 meses)
+                    </label>
                     <select id="budgetCurrency" class="text-sm rounded border border-gray-300 p-1 font-bold text-blue-800">
                         <option value="EUR">EUR</option>
                         <option value="USD">USD</option>
@@ -69,6 +105,11 @@
                 <div id="targetBar" class="bg-blue-600 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
             </div>
             <p id="targetStatus" class="text-xs text-gray-500 mt-2 font-medium">0% del presupuesto consumido</p>
+            <div class="flex justify-between text-[11px] text-gray-500 mt-1">
+                <span id="budgetRemainingHint"></span>
+                <span id="budgetDaysHint"></span>
+            </div>
+            <p id="budgetForecastHint" class="hidden text-[11px] text-indigo-600 font-semibold mt-2"><i class="fa-solid fa-chart-line mr-1"></i></p>
             <p id="budgetSavedHint" class="hidden text-xs text-green-600 mt-1 font-medium"><i class="fa-solid fa-check"></i> Presupuesto guardado</p>
         </div>
 
@@ -233,6 +274,39 @@
                     </ul>
                 </div>
 
+                <!-- Transferencias entre cuentas -->
+                <button type="button" id="btnToggleTransfer" class="w-full flex justify-center items-center gap-2 py-2 px-4 mb-4 border border-teal-300 rounded-md text-sm font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors">
+                    <i class="fa-solid fa-right-left"></i> Transferir entre cuentas
+                </button>
+                <form id="transferForm" class="hidden space-y-3 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700">Desde</label>
+                            <select id="transferFrom" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm bg-white"></select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700">Hacia</label>
+                            <select id="transferTo" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm bg-white"></select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700">Monto que sale</label>
+                            <input type="number" id="transferAmountFrom" min="0.01" step="0.01" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm">
+                        </div>
+                        <div id="transferAmountToWrapper" class="hidden">
+                            <label class="block text-xs font-medium text-gray-700">Monto que entra</label>
+                            <input type="number" id="transferAmountTo" min="0.01" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border text-sm">
+                        </div>
+                    </div>
+                    <p id="transferHint" class="text-[11px] text-gray-500"></p>
+                    <div class="flex gap-2">
+                        <button type="submit" class="w-full py-2 px-4 rounded-md text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 transition-colors">Confirmar Transferencia</button>
+                        <button type="button" id="btnCancelTransfer" class="py-2 px-3 rounded-md text-sm font-bold text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">Cancelar</button>
+                    </div>
+                </form>
+                <ul id="transferList" class="text-xs text-gray-500 mb-6 space-y-1"></ul>
+
                 <!-- Objetivos / Metas -->
                 <h2 class="text-xl font-bold mb-4 text-gray-700"><i class="fa-solid fa-bullseye mr-2"></i>Mis Objetivos</h2>
                 <form id="goalForm" class="grid grid-cols-3 gap-2 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner items-end">
@@ -281,6 +355,28 @@
                 <canvas id="annualChart" role="img" aria-label="Evolución del patrimonio a lo largo del año"></canvas>
             </div>
             <p class="text-[10px] text-gray-400 mt-1 text-center">Cada línea muestra tu patrimonio total (cuentas + objetivos) en esa moneda, acumulado al cierre de cada mes. Las monedas no se convierten entre sí.</p>
+        </div>
+
+        <hr class="my-6 border-gray-300">
+
+        <!-- Histórico Mensual e Insights -->
+        <div class="mb-6">
+            <h2 class="text-lg font-bold text-gray-700 mb-2"><i class="fa-solid fa-scale-balanced mr-2"></i>Histórico Mensual (últimos 6 meses)</h2>
+            <div class="relative h-56 w-full bg-gray-50 rounded-lg border border-gray-200 p-2">
+                <canvas id="monthlyHistoryChart" role="img" aria-label="Comparación de ingresos y gastos mes a mes"></canvas>
+            </div>
+            <p id="monthlyHistoryCurrencyNote" class="text-[10px] text-gray-400 mt-1 text-center">En la moneda de tu presupuesto.</p>
+        </div>
+
+        <div class="mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-2 gap-1">
+                <h2 class="text-lg font-bold text-gray-700"><i class="fa-solid fa-braille mr-2"></i>Dispersión de Gastos del Mes</h2>
+                <p id="avgDailyExpense" class="text-xs font-semibold text-gray-500">—</p>
+            </div>
+            <div class="relative h-56 w-full bg-gray-50 rounded-lg border border-gray-200 p-2">
+                <canvas id="expenseScatterChart" role="img" aria-label="Dispersión de gastos diarios del mes actual"></canvas>
+            </div>
+            <p class="text-[10px] text-gray-400 mt-1 text-center">Cada punto es un gasto del mes actual. La línea marca tu promedio diario.</p>
         </div>
 
         <hr class="my-6 border-gray-300">
@@ -392,11 +488,13 @@
         const state = {
             targetGasto: parseFloat(safeGetItem('targetGasto')) || 1000.00,
             targetCurrency: safeGetItem('targetCurrency') || 'EUR',
+            dynamicBudget: safeGetItem('dynamicBudget') === 'true',
             transactions: safeParse(safeGetItem('finances'), []),
             savings: safeParse(safeGetItem('savingsData'), []),
             goals: safeParse(safeGetItem('goals'), []),
             goalContributions: safeParse(safeGetItem('goalContributions'), []),
             recurring: safeParse(safeGetItem('recurringTransactions'), []),
+            transfers: safeParse(safeGetItem('accountTransfers'), []),
             chart: null
         };
 
@@ -406,6 +504,7 @@
         if (!Array.isArray(state.goals)) state.goals = [];
         if (!Array.isArray(state.goalContributions)) state.goalContributions = [];
         if (!Array.isArray(state.recurring)) state.recurring = [];
+        if (!Array.isArray(state.transfers)) state.transfers = [];
 
         state.transactions = state.transactions.filter(t => t && typeof t === 'object' && Number.isFinite(parseFloat(t.amount)));
         state.transactions.forEach(t => { t.amount = parseFloat(t.amount) || 0; });
@@ -449,6 +548,19 @@
             if (typeof r.active !== 'boolean') r.active = true;
         });
         persistRecurring();
+
+        state.transfers = state.transfers.filter(tr =>
+            tr && typeof tr === 'object' &&
+            Number.isFinite(parseFloat(tr.amountFrom)) &&
+            Number.isFinite(parseFloat(tr.amountTo)) &&
+            tr.fromAccountId && tr.toAccountId
+        );
+        state.transfers.forEach(tr => {
+            tr.amountFrom = parseFloat(tr.amountFrom) || 0;
+            tr.amountTo = parseFloat(tr.amountTo) || 0;
+            if (!tr.id) tr.id = genId();
+        });
+        persistTransfers();
 
 
         // Las categorías de ingreso y gasto ahora son listas separadas: antes se mezclaban
@@ -510,7 +622,33 @@
         const recurringSection = document.getElementById('recurringSection');
         const recurringList = document.getElementById('recurringList');
         const btnLoadMoreTx = document.getElementById('btnLoadMoreTx');
+        const dynamicBudgetToggle = document.getElementById('dynamicBudgetToggle');
+        const budgetRemainingHint = document.getElementById('budgetRemainingHint');
+        const budgetDaysHint = document.getElementById('budgetDaysHint');
+        const budgetForecastHint = document.getElementById('budgetForecastHint');
+        const heroPatrimonio = document.getElementById('heroPatrimonio');
+        const heroPatrimonioDelta = document.getElementById('heroPatrimonioDelta');
+        const heroIncome = document.getElementById('heroIncome');
+        const heroIncomeDelta = document.getElementById('heroIncomeDelta');
+        const heroExpense = document.getElementById('heroExpense');
+        const heroExpenseDelta = document.getElementById('heroExpenseDelta');
+        const heroCategoryBars = document.getElementById('heroCategoryBars');
+        const heroInsight = document.getElementById('heroInsight');
+        const btnToggleTransfer = document.getElementById('btnToggleTransfer');
+        const transferForm = document.getElementById('transferForm');
+        const transferFrom = document.getElementById('transferFrom');
+        const transferTo = document.getElementById('transferTo');
+        const transferAmountFrom = document.getElementById('transferAmountFrom');
+        const transferAmountTo = document.getElementById('transferAmountTo');
+        const transferAmountToWrapper = document.getElementById('transferAmountToWrapper');
+        const transferHint = document.getElementById('transferHint');
+        const btnCancelTransfer = document.getElementById('btnCancelTransfer');
+        const transferList = document.getElementById('transferList');
+        const monthlyHistoryCurrencyNote = document.getElementById('monthlyHistoryCurrencyNote');
+        const avgDailyExpenseEl = document.getElementById('avgDailyExpense');
         let annualChartInstance = null;
+        let monthlyHistoryChartInstance = null;
+        let expenseScatterChartInstance = null;
 
         // Paginación de la lista de movimientos: se muestran de a tandas para
         // no degradar el rendimiento cuando hay muchos meses de historial.
@@ -519,6 +657,13 @@
 
         budgetInput.value = state.targetGasto;
         budgetCurrency.value = state.targetCurrency;
+        dynamicBudgetToggle.checked = state.dynamicBudget;
+        budgetInput.disabled = state.dynamicBudget;
+        document.getElementById('btnSaveBudget').disabled = state.dynamicBudget;
+        if (state.dynamicBudget) {
+            budgetInput.classList.add('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btnSaveBudget').classList.add('opacity-50', 'cursor-not-allowed');
+        }
         document.getElementById('date').value = new Date().toISOString().split('T')[0];
         populateCategoryOptions(typeSelect.value);
         typeSelect.addEventListener('change', () => populateCategoryOptions(typeSelect.value));
@@ -539,6 +684,7 @@
         function persistBudget() {
             safeSetItem('targetGasto', state.targetGasto);
             safeSetItem('targetCurrency', state.targetCurrency);
+            safeSetItem('dynamicBudget', state.dynamicBudget ? 'true' : 'false');
         }
         function persistGoals() {
             return safeSetItem('goals', JSON.stringify(state.goals));
@@ -548,6 +694,9 @@
         }
         function persistRecurring() {
             return safeSetItem('recurringTransactions', JSON.stringify(state.recurring));
+        }
+        function persistTransfers() {
+            return safeSetItem('accountTransfers', JSON.stringify(state.transfers));
         }
 
         /* =========================================================
@@ -567,6 +716,11 @@
                 if (c.accountId === accountId) {
                     balance -= c.amount;
                 }
+            });
+            // Transferencias entre cuentas: sale de "from", entra a "to"
+            state.transfers.forEach(tr => {
+                if (tr.fromAccountId === accountId) balance -= tr.amountFrom;
+                if (tr.toAccountId === accountId) balance += tr.amountTo;
             });
             return balance;
         }
@@ -785,6 +939,137 @@
         });
 
         /* =========================================================
+         * Transferencias entre cuentas
+         * ========================================================= */
+        function renderTransferUI() {
+            const currentFromVal = transferFrom.value;
+            const currentToVal = transferTo.value;
+
+            const options = state.savings
+                .map(s => `<option value="${s.id}">${escapeHTML(s.type)} (${s.currency}) — ${formatMoney(getAccountBalance(s.id), s.currency)}</option>`)
+                .join('');
+
+            transferFrom.innerHTML = options;
+            transferTo.innerHTML = options;
+
+            if (state.savings.some(s => s.id === currentFromVal)) transferFrom.value = currentFromVal;
+            if (state.savings.some(s => s.id === currentToVal)) transferTo.value = currentToVal;
+
+            updateTransferHint();
+        }
+
+        function updateTransferHint() {
+            const fromAcc = state.savings.find(s => s.id === transferFrom.value);
+            const toAcc = state.savings.find(s => s.id === transferTo.value);
+
+            if (!fromAcc || !toAcc) {
+                transferAmountToWrapper.classList.add('hidden');
+                transferHint.textContent = state.savings.length < 2 ? 'Necesitás al menos 2 cuentas para transferir.' : '';
+                return;
+            }
+
+            if (fromAcc.id === toAcc.id) {
+                transferHint.textContent = 'Elegí dos cuentas distintas.';
+                transferAmountToWrapper.classList.add('hidden');
+                return;
+            }
+
+            if (fromAcc.currency === toAcc.currency) {
+                transferAmountToWrapper.classList.add('hidden');
+                transferHint.textContent = `Se transferirá el mismo monto en ${fromAcc.currency}.`;
+            } else {
+                transferAmountToWrapper.classList.remove('hidden');
+                const amt = parseFloat(transferAmountFrom.value);
+                if (Number.isFinite(amt) && amt > 0) {
+                    const converted = convertAmount(amt, fromAcc.currency, toAcc.currency);
+                    if (converted !== null) {
+                        transferAmountTo.value = converted.toFixed(2);
+                        transferHint.textContent = `Conversión sugerida según cotización actual (editable).`;
+                    } else {
+                        transferHint.textContent = `Monedas distintas (${fromAcc.currency} → ${toAcc.currency}): no hay cotización disponible, ingresá el monto recibido manualmente.`;
+                    }
+                } else {
+                    transferHint.textContent = `Monedas distintas (${fromAcc.currency} → ${toAcc.currency}): indicá cuánto sale y cuánto entra.`;
+                }
+            }
+        }
+
+        function renderTransferList() {
+            if (state.transfers.length === 0) {
+                transferList.innerHTML = '';
+                return;
+            }
+            const recent = state.transfers.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 5);
+            transferList.innerHTML = recent.map(tr => {
+                const fromAcc = state.savings.find(s => s.id === tr.fromAccountId);
+                const toAcc = state.savings.find(s => s.id === tr.toAccountId);
+                const fromLabel = fromAcc ? `${escapeHTML(fromAcc.type)} (${fromAcc.currency})` : 'Cuenta eliminada';
+                const toLabel = toAcc ? `${escapeHTML(toAcc.type)} (${toAcc.currency})` : 'Cuenta eliminada';
+                return `<li><i class="fa-solid fa-right-left mr-1 text-teal-500"></i>${tr.date}: ${formatMoney(tr.amountFrom, fromAcc ? fromAcc.currency : '')} de ${fromLabel} → ${formatMoney(tr.amountTo, toAcc ? toAcc.currency : '')} a ${toLabel}</li>`;
+            }).join('');
+        }
+
+        btnToggleTransfer.addEventListener('click', () => {
+            transferForm.classList.toggle('hidden');
+            if (!transferForm.classList.contains('hidden')) {
+                renderTransferUI();
+            }
+        });
+        btnCancelTransfer.addEventListener('click', () => {
+            transferForm.classList.add('hidden');
+            transferForm.reset();
+        });
+        transferFrom.addEventListener('change', updateTransferHint);
+        transferTo.addEventListener('change', updateTransferHint);
+        transferAmountFrom.addEventListener('input', updateTransferHint);
+
+        transferForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const fromAcc = state.savings.find(s => s.id === transferFrom.value);
+            const toAcc = state.savings.find(s => s.id === transferTo.value);
+            const amountFrom = parseFloat(transferAmountFrom.value);
+
+            if (!fromAcc || !toAcc || fromAcc.id === toAcc.id) {
+                alert('Elegí dos cuentas distintas.');
+                return;
+            }
+            if (!Number.isFinite(amountFrom) || amountFrom <= 0) {
+                alert('Ingresá un monto válido mayor a 0.');
+                return;
+            }
+
+            let amountTo = amountFrom;
+            if (fromAcc.currency !== toAcc.currency) {
+                amountTo = parseFloat(transferAmountTo.value);
+                if (!Number.isFinite(amountTo) || amountTo <= 0) {
+                    alert('Indicá el monto que entra a la cuenta destino (las monedas son distintas).');
+                    return;
+                }
+            }
+
+            const availableBalance = getAccountBalance(fromAcc.id);
+            if (amountFrom > availableBalance) {
+                const proceed = confirm(`El monto supera el saldo disponible en ${fromAcc.type} (${formatMoney(availableBalance, fromAcc.currency)}). ¿Transferir igual?`);
+                if (!proceed) return;
+            }
+
+            state.transfers.push({
+                id: genId(),
+                fromAccountId: fromAcc.id,
+                toAccountId: toAcc.id,
+                amountFrom,
+                amountTo,
+                date: new Date().toISOString().split('T')[0]
+            });
+            persistTransfers();
+
+            transferForm.reset();
+            transferForm.classList.add('hidden');
+            updateDashboard();
+        });
+
+        /* =========================================================
          * Gastos Recurrentes / Suscripciones
          *
          * Funciona 100% offline: es pura lógica de fechas locales, no
@@ -952,25 +1237,96 @@
             });
         }
 
-        function renderBudget(totals) {
+        // Devuelve, para los últimos `monthsBack` meses (incluyendo el actual), el
+        // ingreso/gasto total en la moneda indicada. El primer elemento es el más
+        // antiguo; el último es el mes actual. Se usa para presupuesto dinámico,
+        // histórico mensual e insights.
+        function getMonthlyHistory(currency, monthsBack) {
+            const result = [];
+            const now = new Date();
+            for (let i = monthsBack - 1; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                let income = 0, expense = 0;
+                state.transactions.forEach(t => {
+                    if (getYearMonth(t.date) !== ym) return;
+                    const acc = state.savings.find(s => s.id === t.accountId);
+                    const cur = acc ? acc.currency : 'EUR';
+                    if (cur !== currency) return;
+                    if (t.type === 'ingreso') income += t.amount; else expense += t.amount;
+                });
+                result.push({ ym, income, expense });
+            }
+            return result;
+        }
+
+        function renderBudget(totals, filterValue) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const currentYM = getYearMonth(todayStr);
+            const isCurrentMonth = !filterValue || filterValue === currentYM;
+
+            // Presupuesto dinámico: promedio de gasto de los últimos 3 meses completos
+            // (no incluye el mes actual, que todavía está en curso).
+            let effectiveTarget = state.targetGasto;
+            if (state.dynamicBudget) {
+                const history = getMonthlyHistory(state.targetCurrency, 4); // [m-3, m-2, m-1, actual]
+                const completed3 = history.slice(0, 3);
+                const avg3 = completed3.length > 0
+                    ? completed3.reduce((s, m) => s + m.expense, 0) / completed3.length
+                    : 0;
+                if (avg3 > 0) effectiveTarget = avg3;
+            }
+
             const expenseInBudgetCurrency = (totals[state.targetCurrency] && totals[state.targetCurrency].expense) || 0;
 
             let percentage = 0;
-            if (state.targetGasto > 0) {
-                percentage = (expenseInBudgetCurrency / state.targetGasto) * 100;
+            if (effectiveTarget > 0) {
+                percentage = (expenseInBudgetCurrency / effectiveTarget) * 100;
             }
             if (!Number.isFinite(percentage) || percentage < 0) percentage = 0;
-            if (percentage > 100) percentage = 100;
+            const displayPercentage = Math.min(percentage, 100);
 
-            targetBar.style.width = `${percentage}%`;
-            targetStatus.innerText = `${percentage.toFixed(1)}% de ${formatMoney(state.targetGasto, state.targetCurrency)}`;
+            targetBar.style.width = `${displayPercentage}%`;
+            const dynamicLabel = state.dynamicBudget ? ' (dinámico)' : '';
+            targetStatus.innerText = `${percentage.toFixed(1)}% de ${formatMoney(effectiveTarget, state.targetCurrency)}${dynamicLabel}`;
 
-            if (expenseInBudgetCurrency > state.targetGasto && state.targetGasto > 0) {
+            if (expenseInBudgetCurrency > effectiveTarget && effectiveTarget > 0) {
                 targetBar.classList.remove('bg-blue-600');
                 targetBar.classList.add('bg-red-600');
             } else {
                 targetBar.classList.remove('bg-red-600');
                 targetBar.classList.add('bg-blue-600');
+            }
+
+            // "Te quedan / días restantes / proyección" solo tienen sentido para
+            // el mes que está corriendo de verdad, no para meses filtrados del pasado.
+            if (isCurrentMonth) {
+                const today = new Date();
+                const dayOfMonth = today.getDate();
+                const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                const daysRemaining = Math.max(daysInMonth - dayOfMonth, 0);
+                const remaining = effectiveTarget - expenseInBudgetCurrency;
+
+                budgetRemainingHint.textContent = remaining >= 0
+                    ? `Te quedan ${formatMoney(remaining, state.targetCurrency)}`
+                    : `Te pasaste ${formatMoney(Math.abs(remaining), state.targetCurrency)}`;
+                budgetDaysHint.textContent = `${daysRemaining} día${daysRemaining === 1 ? '' : 's'} restante${daysRemaining === 1 ? '' : 's'}`;
+
+                const forecast = dayOfMonth > 0 ? (expenseInBudgetCurrency / dayOfMonth) * daysInMonth : expenseInBudgetCurrency;
+                budgetForecastHint.classList.remove('hidden');
+                if (effectiveTarget > 0 && forecast > effectiveTarget) {
+                    budgetForecastHint.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i>Proyección fin de mes: ${formatMoney(forecast, state.targetCurrency)} (superarías el presupuesto)`;
+                    budgetForecastHint.classList.remove('text-indigo-600');
+                    budgetForecastHint.classList.add('text-red-600');
+                } else {
+                    budgetForecastHint.innerHTML = `<i class="fa-solid fa-chart-line mr-1"></i>Proyección fin de mes: ${formatMoney(forecast, state.targetCurrency)}`;
+                    budgetForecastHint.classList.remove('text-red-600');
+                    budgetForecastHint.classList.add('text-indigo-600');
+                }
+            } else {
+                budgetRemainingHint.textContent = '';
+                budgetDaysHint.textContent = '';
+                budgetForecastHint.classList.add('hidden');
             }
         }
 
@@ -1108,19 +1464,33 @@
         }
 
         // Calcula, mes a mes, el patrimonio total acumulado por moneda (saldo inicial
-        // de las cuentas + ingresos/gastos históricos hasta el cierre de cada mes).
-        // Las transferencias a objetivos no se restan acá: mover plata de una cuenta
-        // a un objetivo no crea ni destruye patrimonio, solo lo reubica.
+        // de las cuentas + ingresos/gastos + transferencias entre cuentas, hasta el
+        // cierre de cada mes). Las transferencias a objetivos no se restan acá: mover
+        // plata de una cuenta a un objetivo no crea ni destruye patrimonio, solo lo reubica.
+        // Las transferencias entre cuentas de distinta moneda sí mueven valor entre series.
         function computeAnnualSeries(year) {
             const runningByCurrency = { EUR: 0, USD: 0, ARS: 0 };
             state.savings.forEach(s => {
                 runningByCurrency[s.currency] = (runningByCurrency[s.currency] || 0) + s.amount;
             });
 
-            const sortedTx = state.transactions
-                .filter(t => t.date)
-                .slice()
-                .sort((a, b) => a.date.localeCompare(b.date));
+            const events = [];
+            state.transactions.forEach(t => {
+                if (!t.date) return;
+                const account = state.savings.find(s => s.id === t.accountId);
+                const currency = account ? account.currency : 'EUR';
+                events.push({ date: t.date, currency, delta: (t.type === 'ingreso' ? t.amount : -t.amount) });
+            });
+            state.transfers.forEach(tr => {
+                if (!tr.date) return;
+                const fromAcc = state.savings.find(s => s.id === tr.fromAccountId);
+                const toAcc = state.savings.find(s => s.id === tr.toAccountId);
+                const fromCur = fromAcc ? fromAcc.currency : 'EUR';
+                const toCur = toAcc ? toAcc.currency : 'EUR';
+                events.push({ date: tr.date, currency: fromCur, delta: -tr.amountFrom });
+                events.push({ date: tr.date, currency: toCur, delta: tr.amountTo });
+            });
+            events.sort((a, b) => a.date.localeCompare(b.date));
 
             const series = { EUR: [], USD: [], ARS: [] };
             let cursor = 0;
@@ -1130,12 +1500,10 @@
                 // strings ISO (YYYY-MM-DD) sigue funcionando bien aunque el mes no tenga día 31.
                 const cutoff = `${year}-${String(month).padStart(2, '0')}-31`;
 
-                while (cursor < sortedTx.length && sortedTx[cursor].date <= cutoff) {
-                    const t = sortedTx[cursor];
-                    const account = state.savings.find(s => s.id === t.accountId);
-                    const currency = account ? account.currency : 'EUR';
-                    if (!(currency in runningByCurrency)) runningByCurrency[currency] = 0;
-                    runningByCurrency[currency] += (t.type === 'ingreso') ? t.amount : -t.amount;
+                while (cursor < events.length && events[cursor].date <= cutoff) {
+                    const ev = events[cursor];
+                    if (!(ev.currency in runningByCurrency)) runningByCurrency[ev.currency] = 0;
+                    runningByCurrency[ev.currency] += ev.delta;
                     cursor++;
                 }
 
@@ -1329,8 +1697,245 @@
         consolidatedCurrencySelect.addEventListener('change', () => {
             safeSetItem('consolidatedCurrency', consolidatedCurrencySelect.value);
             renderConsolidatedPatrimony();
+            renderHeroSummary();
         });
         btnRefreshRates.addEventListener('click', refreshExchangeRates);
+
+        /* =========================================================
+         * Resumen Inteligente (panel superior)
+         * ========================================================= */
+
+        // Patrimonio total por moneda con datos hasta (e incluyendo) cutoffDateStr,
+        // contando saldo inicial de cuentas + ingresos/gastos + transferencias.
+        // Las transferencias a objetivos no afectan el total (solo lo reubican).
+        function getPatrimonioAt(cutoffDateStr) {
+            const totals = { EUR: 0, USD: 0, ARS: 0 };
+            state.savings.forEach(s => {
+                totals[s.currency] = (totals[s.currency] || 0) + s.amount;
+            });
+
+            state.transactions.forEach(t => {
+                if (!t.date || t.date > cutoffDateStr) return;
+                const acc = state.savings.find(s => s.id === t.accountId);
+                const cur = acc ? acc.currency : 'EUR';
+                if (!(cur in totals)) totals[cur] = 0;
+                totals[cur] += (t.type === 'ingreso') ? t.amount : -t.amount;
+            });
+
+            state.transfers.forEach(tr => {
+                if (!tr.date || tr.date > cutoffDateStr) return;
+                const fromAcc = state.savings.find(s => s.id === tr.fromAccountId);
+                const toAcc = state.savings.find(s => s.id === tr.toAccountId);
+                const fromCur = fromAcc ? fromAcc.currency : 'EUR';
+                const toCur = toAcc ? toAcc.currency : 'EUR';
+                if (!(fromCur in totals)) totals[fromCur] = 0;
+                if (!(toCur in totals)) totals[toCur] = 0;
+                totals[fromCur] -= tr.amountFrom;
+                totals[toCur] += tr.amountTo;
+            });
+
+            return totals;
+        }
+
+        function convertTotalsToCurrency(totalsByCurrency, targetCurrency) {
+            let total = 0;
+            let hasMissing = false;
+            Object.keys(totalsByCurrency).forEach(cur => {
+                const amt = totalsByCurrency[cur];
+                if (!amt) return;
+                if (cur === targetCurrency) {
+                    total += amt;
+                    return;
+                }
+                const converted = convertAmount(amt, cur, targetCurrency);
+                if (converted === null) hasMissing = true;
+                else total += converted;
+            });
+            return { total, hasMissing };
+        }
+
+        function renderHeroSummary() {
+            const targetCurrency = consolidatedCurrencySelect.value;
+            const budgetCur = state.targetCurrency;
+            const todayStr = new Date().toISOString().split('T')[0];
+            const currentYM = getYearMonth(todayStr);
+
+            // --- Patrimonio total + variación vs. cierre del mes anterior ---
+            if (!state.exchangeRates) {
+                heroPatrimonio.textContent = 'Sin cotización';
+                heroPatrimonioDelta.textContent = 'Actualizá la cotización (↻) más abajo para ver el total consolidado.';
+            } else {
+                const now = new Date();
+                const lastDayPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+                const lastDayPrevMonthStr = lastDayPrevMonth.toISOString().split('T')[0];
+
+                const { total: totalNow, hasMissing: missingNow } = convertTotalsToCurrency(getPatrimonioAt(todayStr), targetCurrency);
+                const { total: totalPrev, hasMissing: missingPrev } = convertTotalsToCurrency(getPatrimonioAt(lastDayPrevMonthStr), targetCurrency);
+
+                heroPatrimonio.textContent = formatMoney(totalNow, targetCurrency);
+
+                if (missingNow || missingPrev) {
+                    heroPatrimonioDelta.textContent = 'Algunas monedas no tienen cotización disponible.';
+                } else {
+                    const delta = totalNow - totalPrev;
+                    const arrow = delta >= 0 ? '▲' : '▼';
+                    heroPatrimonioDelta.textContent = `${arrow} ${formatMoney(Math.abs(delta), targetCurrency)} este mes`;
+                }
+            }
+
+            // --- Ingresos / Gastos del mes actual + variación vs. mes anterior ---
+            const history2 = getMonthlyHistory(budgetCur, 2); // [mes anterior, mes actual]
+            const current = history2[1];
+            const previous = history2[0];
+
+            heroIncome.textContent = formatMoney(current.income, budgetCur);
+            heroExpense.textContent = formatMoney(current.expense, budgetCur);
+
+            function pctChangeLabel(curr, prev) {
+                if (prev <= 0) return curr > 0 ? 'Sin datos del mes anterior' : '—';
+                const pct = ((curr - prev) / prev) * 100;
+                const arrow = pct >= 0 ? '▲' : '▼';
+                return `${arrow} ${Math.abs(pct).toFixed(0)}% vs. mes anterior`;
+            }
+            heroIncomeDelta.textContent = pctChangeLabel(current.income, previous.income);
+            heroExpenseDelta.textContent = pctChangeLabel(current.expense, previous.expense);
+
+            // --- Categorías del mes actual (barras horizontales) ---
+            const { expenseCategories: currentCategories } = computeMonthTotals(currentYM);
+            const sortedCats = Object.entries(currentCategories).sort((a, b) => b[1] - a[1]);
+            const maxCat = sortedCats.length > 0 ? sortedCats[0][1] : 0;
+
+            if (sortedCats.length === 0) {
+                heroCategoryBars.innerHTML = '<p class="text-xs text-gray-400 text-center">Todavía no hay gastos este mes.</p>';
+            } else {
+                heroCategoryBars.innerHTML = sortedCats.slice(0, 6).map(([cat, amt]) => {
+                    const pct = maxCat > 0 ? (amt / maxCat) * 100 : 0;
+                    return `
+                        <div>
+                            <div class="flex justify-between text-[11px] text-gray-600 mb-0.5">
+                                <span>${escapeHTML(cat)}</span>
+                                <span class="font-semibold">${formatMoney(amt, budgetCur)}</span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2">
+                                <div class="h-2 rounded-full bg-indigo-500" style="width:${pct}%"></div>
+                            </div>
+                        </div>`;
+                }).join('');
+            }
+
+            // --- Insight automático: mes actual vs. promedio de los últimos 3 meses completos ---
+            const history4 = getMonthlyHistory(budgetCur, 4); // [m-3, m-2, m-1, actual]
+            const completed3 = history4.slice(0, 3);
+            const avgExpense3 = completed3.length > 0
+                ? completed3.reduce((s, m) => s + m.expense, 0) / completed3.length
+                : 0;
+
+            if (avgExpense3 <= 0) {
+                heroInsight.textContent = 'Todavía no hay suficiente historial (necesitás al menos un mes completo) para generar un insight.';
+            } else {
+                const diffPct = ((current.expense - avgExpense3) / avgExpense3) * 100;
+                if (Math.abs(diffPct) < 3) {
+                    heroInsight.textContent = `Este mes estás gastando prácticamente igual que tu promedio de los últimos 3 meses (${formatMoney(avgExpense3, budgetCur)}).`;
+                } else if (diffPct < 0) {
+                    heroInsight.textContent = `Este mes estás gastando ${Math.abs(diffPct).toFixed(0)}% menos que tu promedio de los últimos 3 meses. ¡Bien ahí!`;
+                } else {
+                    heroInsight.textContent = `Este mes estás gastando ${diffPct.toFixed(0)}% más que tu promedio de los últimos 3 meses (${formatMoney(avgExpense3, budgetCur)}).`;
+                }
+            }
+        }
+
+        /* =========================================================
+         * Histórico Mensual (barras) y Dispersión de Gastos (scatter)
+         * ========================================================= */
+        function renderMonthlyHistoryChart() {
+            const budgetCur = state.targetCurrency;
+            const history = getMonthlyHistory(budgetCur, 6);
+            const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+            const labels = history.map(m => {
+                const [y, mo] = m.ym.split('-');
+                return `${monthNames[Number(mo) - 1]} ${y.slice(2)}`;
+            });
+
+            monthlyHistoryCurrencyNote.textContent = `En ${budgetCur} (la moneda de tu presupuesto).`;
+
+            const ctx = document.getElementById('monthlyHistoryChart').getContext('2d');
+            if (monthlyHistoryChartInstance) monthlyHistoryChartInstance.destroy();
+
+            monthlyHistoryChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Ingresos', data: history.map(m => m.income), backgroundColor: '#34D399' },
+                        { label: 'Gastos', data: history.map(m => m.expense), backgroundColor: '#F87171' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        function renderExpenseScatterChart() {
+            const budgetCur = state.targetCurrency;
+            const todayStr = new Date().toISOString().split('T')[0];
+            const currentYM = getYearMonth(todayStr);
+            const today = new Date();
+            const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+
+            const points = [];
+            state.transactions.forEach(t => {
+                if (t.type !== 'gasto' || getYearMonth(t.date) !== currentYM) return;
+                const acc = state.savings.find(s => s.id === t.accountId);
+                const cur = acc ? acc.currency : 'EUR';
+                if (cur !== budgetCur) return;
+                const day = Number(t.date.split('-')[2]);
+                if (Number.isFinite(day)) points.push({ x: day, y: t.amount });
+            });
+
+            const totalExpense = points.reduce((s, p) => s + p.y, 0);
+            const avgDaily = today.getDate() > 0 ? totalExpense / today.getDate() : 0;
+            avgDailyExpenseEl.textContent = `Promedio diario: ${formatMoney(avgDaily, budgetCur)}`;
+
+            const ctx = document.getElementById('expenseScatterChart').getContext('2d');
+            if (expenseScatterChartInstance) expenseScatterChartInstance.destroy();
+
+            expenseScatterChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Gastos',
+                            data: points,
+                            showLine: false,
+                            pointRadius: 5,
+                            pointBackgroundColor: '#F87171',
+                            pointBorderColor: '#B91C1C'
+                        },
+                        {
+                            label: 'Promedio diario',
+                            data: [{ x: 1, y: avgDaily }, { x: daysInMonth, y: avgDaily }],
+                            borderColor: '#6366F1',
+                            borderDash: [6, 4],
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'Día del mes' }, min: 1, max: daysInMonth },
+                        y: { beginAtZero: true, title: { display: true, text: budgetCur } }
+                    }
+                }
+            });
+        }
 
         /* =========================================================
          * Orquestador principal
@@ -1340,17 +1945,22 @@
             updateSavings();
             renderGoals();
             renderRecurringList();
+            renderTransferUI();
+            renderTransferList();
 
             const filterValue = monthFilter.value;
             const { totals, expenseCategories } = computeMonthTotals(filterValue);
 
             renderCurrencySummary(totals);
-            renderBudget(totals);
+            renderBudget(totals, filterValue);
             renderTransactions(filterValue);
             updateChart(expenseCategories);
 
             renderAnnualChart();
             renderConsolidatedPatrimony();
+            renderHeroSummary();
+            renderMonthlyHistoryChart();
+            renderExpenseScatterChart();
         }
 
         /* =========================================================
@@ -1377,6 +1987,21 @@
 
             budgetSavedHint.classList.remove('hidden');
             setTimeout(() => budgetSavedHint.classList.add('hidden'), 2000);
+        });
+
+        dynamicBudgetToggle.addEventListener('change', () => {
+            state.dynamicBudget = dynamicBudgetToggle.checked;
+            persistBudget();
+
+            const btnSave = document.getElementById('btnSaveBudget');
+            budgetInput.disabled = state.dynamicBudget;
+            btnSave.disabled = state.dynamicBudget;
+            budgetInput.classList.toggle('opacity-50', state.dynamicBudget);
+            budgetInput.classList.toggle('cursor-not-allowed', state.dynamicBudget);
+            btnSave.classList.toggle('opacity-50', state.dynamicBudget);
+            btnSave.classList.toggle('cursor-not-allowed', state.dynamicBudget);
+
+            updateDashboard();
         });
 
         /* =========================================================
@@ -1621,11 +2246,13 @@
             const backupData = {
                 targetGasto: state.targetGasto,
                 targetCurrency: state.targetCurrency,
+                dynamicBudget: state.dynamicBudget,
                 transactions: state.transactions,
                 savings: state.savings,
                 goals: state.goals,
                 goalContributions: state.goalContributions,
                 recurring: state.recurring,
+                transfers: state.transfers,
                 exportDate: new Date().toISOString()
             };
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -1674,8 +2301,17 @@
                     Number.isFinite(parseFloat(r.amount))
                 )
             );
+            const transfersOk = data.transfers === undefined || (
+                Array.isArray(data.transfers) &&
+                data.transfers.every(tr =>
+                    tr && typeof tr === 'object' &&
+                    Number.isFinite(parseFloat(tr.amountFrom)) &&
+                    Number.isFinite(parseFloat(tr.amountTo)) &&
+                    tr.fromAccountId && tr.toAccountId
+                )
+            );
 
-            return txOk && svOk && goalsOk && contribOk && recurringOk;
+            return txOk && svOk && goalsOk && contribOk && recurringOk && transfersOk;
         }
 
         function importFromJSON(event) {
