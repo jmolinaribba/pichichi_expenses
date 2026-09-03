@@ -120,6 +120,11 @@
                         <input type="text" id="description" maxlength="200" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500" placeholder="Ej: Almuerzo de trabajo">
                     </div>
 
+                    <label id="recurringCheckboxWrapper" class="flex items-center gap-2 text-sm text-gray-700 select-none">
+                        <input type="checkbox" id="isRecurring" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <span><i class="fa-solid fa-rotate mr-1 text-indigo-500"></i>Repetir todos los meses (suscripción / gasto fijo)</span>
+                    </label>
+
                     <div class="flex gap-2">
                         <button type="submit" id="btnSubmitTx" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none transition-colors">
                             Agregar Transacción
@@ -130,10 +135,19 @@
                     </div>
                 </form>
 
+                <!-- Suscripciones / Gastos Recurrentes -->
+                <div id="recurringSection" class="hidden mt-4">
+                    <h3 class="text-sm font-bold mb-2 text-gray-700"><i class="fa-solid fa-rotate mr-2"></i>Suscripciones y Gastos Fijos</h3>
+                    <ul id="recurringList" class="divide-y divide-gray-200 bg-gray-50 rounded-lg border border-gray-200 px-3 text-sm"></ul>
+                </div>
+
                 <h3 class="text-lg font-bold mt-6 mb-2 text-gray-700"><i class="fa-solid fa-list mr-2"></i>Movimientos del Mes</h3>
                 <div class="max-h-64 overflow-y-auto bg-gray-50 rounded-lg border border-gray-200">
                     <ul id="transactionList" class="divide-y divide-gray-200 px-3">
                     </ul>
+                    <button type="button" id="btnLoadMoreTx" class="hidden w-full text-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 py-2 border-t border-gray-200">
+                        Cargar más movimientos <i class="fa-solid fa-chevron-down ml-1"></i>
+                    </button>
                 </div>
             </div>
 
@@ -173,6 +187,7 @@
                     </div>
                     <p id="consolidatedTotal" class="text-xl font-bold text-indigo-900">—</p>
                     <p id="consolidatedStatus" class="text-[10px] text-gray-500 mt-1">Sin cotización disponible todavía.</p>
+                    <div id="consolidatedRates" class="text-[10px] text-gray-600 mt-2 space-y-0.5"></div>
                 </div>
 
                 <form id="savingsForm" class="space-y-4 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner">
@@ -381,6 +396,7 @@
             savings: safeParse(safeGetItem('savingsData'), []),
             goals: safeParse(safeGetItem('goals'), []),
             goalContributions: safeParse(safeGetItem('goalContributions'), []),
+            recurring: safeParse(safeGetItem('recurringTransactions'), []),
             chart: null
         };
 
@@ -389,6 +405,7 @@
         if (!Array.isArray(state.savings)) state.savings = [];
         if (!Array.isArray(state.goals)) state.goals = [];
         if (!Array.isArray(state.goalContributions)) state.goalContributions = [];
+        if (!Array.isArray(state.recurring)) state.recurring = [];
 
         state.transactions = state.transactions.filter(t => t && typeof t === 'object' && Number.isFinite(parseFloat(t.amount)));
         state.transactions.forEach(t => { t.amount = parseFloat(t.amount) || 0; });
@@ -418,6 +435,21 @@
         });
         persistGoals();
         persistGoalContributions();
+
+        state.recurring = state.recurring.filter(r =>
+            r && typeof r === 'object' &&
+            (r.type === 'ingreso' || r.type === 'gasto') &&
+            Number.isFinite(parseFloat(r.amount)) &&
+            /^\d{4}-\d{2}$/.test(r.lastGeneratedMonth || '')
+        );
+        state.recurring.forEach(r => {
+            r.amount = parseFloat(r.amount) || 0;
+            if (!r.id) r.id = genId();
+            if (!Number.isFinite(r.dayOfMonth) || r.dayOfMonth < 1 || r.dayOfMonth > 28) r.dayOfMonth = 1;
+            if (typeof r.active !== 'boolean') r.active = true;
+        });
+        persistRecurring();
+
 
         // Las categorías de ingreso y gasto ahora son listas separadas: antes se mezclaban
         // en un mismo <select>, lo que era confuso al cargar un ingreso.
@@ -472,8 +504,18 @@
         const consolidatedCurrencySelect = document.getElementById('consolidatedCurrency');
         const consolidatedTotalEl = document.getElementById('consolidatedTotal');
         const consolidatedStatusEl = document.getElementById('consolidatedStatus');
+        const consolidatedRatesEl = document.getElementById('consolidatedRates');
         const btnRefreshRates = document.getElementById('btnRefreshRates');
+        const isRecurringCheckbox = document.getElementById('isRecurring');
+        const recurringSection = document.getElementById('recurringSection');
+        const recurringList = document.getElementById('recurringList');
+        const btnLoadMoreTx = document.getElementById('btnLoadMoreTx');
         let annualChartInstance = null;
+
+        // Paginación de la lista de movimientos: se muestran de a tandas para
+        // no degradar el rendimiento cuando hay muchos meses de historial.
+        const TX_PAGE_SIZE = 15;
+        let txVisibleCount = TX_PAGE_SIZE;
 
         budgetInput.value = state.targetGasto;
         budgetCurrency.value = state.targetCurrency;
@@ -503,6 +545,9 @@
         }
         function persistGoalContributions() {
             return safeSetItem('goalContributions', JSON.stringify(state.goalContributions));
+        }
+        function persistRecurring() {
+            return safeSetItem('recurringTransactions', JSON.stringify(state.recurring));
         }
 
         /* =========================================================
@@ -740,6 +785,118 @@
         });
 
         /* =========================================================
+         * Gastos Recurrentes / Suscripciones
+         *
+         * Funciona 100% offline: es pura lógica de fechas locales, no
+         * depende de ningún servicio externo. Cada vez que se abre la
+         * app, se revisa si a alguna suscripción activa le faltan meses
+         * por generar (por ejemplo, si no abriste la app en dos meses)
+         * y se cargan automáticamente esas transacciones.
+         * ========================================================= */
+        function getMonthsBetween(fromYM, toYM) {
+            const result = [];
+            let [y, m] = fromYM.split('-').map(Number);
+            const [toY, toM] = toYM.split('-').map(Number);
+            if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(toY) || !Number.isFinite(toM)) return result;
+
+            while (y < toY || (y === toY && m < toM)) {
+                m++;
+                if (m > 12) { m = 1; y++; }
+                result.push(`${y}-${String(m).padStart(2, '0')}`);
+            }
+            return result;
+        }
+
+        function processRecurringTransactions() {
+            const todayYM = getYearMonth(new Date().toISOString().split('T')[0]);
+            let changed = false;
+
+            state.recurring.forEach(r => {
+                if (!r.active) return;
+                const missingMonths = getMonthsBetween(r.lastGeneratedMonth, todayYM);
+
+                missingMonths.forEach(ym => {
+                    const [y, m] = ym.split('-');
+                    const dateStr = `${y}-${m}-${String(r.dayOfMonth).padStart(2, '0')}`;
+
+                    state.transactions.push({
+                        type: r.type,
+                        category: r.category,
+                        amount: r.amount,
+                        description: r.description ? r.description : 'Suscripción automática',
+                        date: dateStr,
+                        accountId: r.accountId,
+                        recurringId: r.id
+                    });
+                    r.lastGeneratedMonth = ym;
+                    changed = true;
+                });
+            });
+
+            if (changed) {
+                persistTransactions();
+                persistRecurring();
+            }
+            return changed;
+        }
+
+        function renderRecurringList() {
+            if (state.recurring.length === 0) {
+                recurringSection.classList.add('hidden');
+                return;
+            }
+            recurringSection.classList.remove('hidden');
+            recurringList.innerHTML = '';
+
+            state.recurring.forEach((r, index) => {
+                const account = state.savings.find(s => s.id === r.accountId);
+                const currency = account ? account.currency : 'EUR';
+                const accName = account ? account.type : 'Sin cuenta';
+
+                const li = document.createElement('li');
+                li.className = `py-2 flex justify-between items-center px-2 ${r.active ? '' : 'opacity-50'}`;
+                li.innerHTML = `
+                    <div>
+                        <p class="font-semibold text-gray-800">${escapeHTML(r.category)} <span class="text-[10px] font-normal text-white bg-gray-500 rounded px-1 ml-1">${escapeHTML(accName)}</span></p>
+                        <p class="text-[10px] text-gray-500">Día ${r.dayOfMonth} de cada mes ${r.active ? '' : '· en pausa'}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold ${r.type === 'ingreso' ? 'text-green-600' : 'text-red-600'}">${r.type === 'ingreso' ? '+' : '-'}${formatMoney(r.amount, currency)}</span>
+                        <button data-action="toggle-recurring" data-index="${index}" aria-label="${r.active ? 'Pausar' : 'Reanudar'} suscripción ${escapeHTML(r.category)}" class="text-indigo-500 hover:text-indigo-700 text-sm">
+                            <i class="fa-solid ${r.active ? 'fa-pause' : 'fa-play'}"></i>
+                        </button>
+                        <button data-action="delete-recurring" data-index="${index}" aria-label="Eliminar suscripción ${escapeHTML(r.category)}" class="text-red-400 hover:text-red-600 text-sm">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                recurringList.appendChild(li);
+            });
+        }
+
+        recurringList.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const index = Number(btn.dataset.index);
+            const r = state.recurring[index];
+            if (!r) return;
+
+            if (btn.dataset.action === 'toggle-recurring') {
+                r.active = !r.active;
+                persistRecurring();
+                renderRecurringList();
+            }
+
+            if (btn.dataset.action === 'delete-recurring') {
+                if (confirm(`¿Eliminar la suscripción "${r.category}"? Las transacciones ya generadas no se borran, solo se detienen las futuras.`)) {
+                    state.recurring.splice(index, 1);
+                    persistRecurring();
+                    renderRecurringList();
+                }
+            }
+        });
+
+        /* =========================================================
          * Cálculo de totales del mes (separados por moneda real de cada cuenta,
          * en vez de sumar todo como si fuera una sola moneda)
          * ========================================================= */
@@ -828,7 +985,9 @@
                 .filter(({ t }) => !filterValue || getYearMonth(t.date) === filterValue)
                 .sort((a, b) => (b.t.date || '').localeCompare(a.t.date || ''));
 
-            rows.forEach(({ t, index }) => {
+            const visibleRows = rows.slice(0, txVisibleCount);
+
+            visibleRows.forEach(({ t, index }) => {
                 let displayDate = t.date;
                 if (displayDate && displayDate.includes('-')) {
                     const [y, m, d] = displayDate.split('-');
@@ -842,12 +1001,15 @@
                 const li = document.createElement('li');
                 li.className = 'py-3 flex justify-between items-center hover:bg-gray-100 rounded px-2 transition-colors';
                 const icon = categoryIcons[t.category] || categoryIcons['Otros'];
+                const recurringBadge = t.recurringId
+                    ? '<i class="fa-solid fa-rotate text-indigo-400 text-[10px] ml-1" title="Generado automáticamente por una suscripción"></i>'
+                    : '';
 
                 li.innerHTML = `
                     <div class="flex items-center gap-3">
                         ${icon}
                         <div>
-                            <p class="text-sm font-bold text-gray-900">${escapeHTML(t.category)} <span class="text-[10px] font-normal text-white bg-gray-500 rounded px-1 ml-1">${escapeHTML(accName)}</span></p>
+                            <p class="text-sm font-bold text-gray-900">${escapeHTML(t.category)} <span class="text-[10px] font-normal text-white bg-gray-500 rounded px-1 ml-1">${escapeHTML(accName)}</span>${recurringBadge}</p>
                             <p class="text-xs text-gray-500 truncate w-24 md:w-36">${escapeHTML(t.description) || 'Sin desc.'} | ${displayDate}</p>
                         </div>
                     </div>
@@ -867,7 +1029,19 @@
             if (rows.length === 0) {
                 transactionList.innerHTML = '<p class="text-center text-gray-500 text-sm py-4">No hay movimientos en este mes.</p>';
             }
+
+            if (rows.length > txVisibleCount) {
+                btnLoadMoreTx.classList.remove('hidden');
+                btnLoadMoreTx.textContent = `Cargar más movimientos (${rows.length - txVisibleCount} restantes)`;
+            } else {
+                btnLoadMoreTx.classList.add('hidden');
+            }
         }
+
+        btnLoadMoreTx.addEventListener('click', () => {
+            txVisibleCount += TX_PAGE_SIZE;
+            renderTransactions(monthFilter.value);
+        });
 
         /* =========================================================
          * Gráfico
@@ -1087,10 +1261,12 @@
             if (!state.exchangeRates) {
                 consolidatedTotalEl.textContent = 'Sin cotización';
                 consolidatedStatusEl.textContent = 'Conectate a internet una vez (botón ↻) para habilitar el total consolidado. No hace falta para cargar gastos.';
+                consolidatedRatesEl.innerHTML = '';
                 return;
             }
 
             consolidatedTotalEl.textContent = formatMoney(total, targetCurrency);
+            renderExchangeRatesBreakdown(targetCurrency);
 
             if (missing.length > 0) {
                 consolidatedStatusEl.textContent = `No se pudo convertir: ${missing.join(', ')} (moneda no disponible en la cotización).`;
@@ -1101,6 +1277,25 @@
             const fecha = updated.toLocaleDateString();
             const hora = updated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             consolidatedStatusEl.textContent = `Cotización del ${fecha} ${hora} · Rates by exchangerate-api.com`;
+        }
+
+        // Muestra cuánto vale 1 unidad de cada una de las otras monedas en la
+        // moneda consolidada elegida (ej: "1 USD ≈ $1234 ARS").
+        function renderExchangeRatesBreakdown(targetCurrency) {
+            if (!state.exchangeRates || !state.exchangeRates.rates) {
+                consolidatedRatesEl.innerHTML = '';
+                return;
+            }
+            const others = ['EUR', 'USD', 'ARS'].filter(c => c !== targetCurrency);
+            const lines = others
+                .map(cur => {
+                    const rate = convertAmount(1, cur, targetCurrency);
+                    if (rate === null) return null;
+                    return `1 ${cur} ≈ ${formatMoney(rate, targetCurrency)}`;
+                })
+                .filter(Boolean);
+
+            consolidatedRatesEl.innerHTML = lines.map(l => `<p>${escapeHTML(l)}</p>`).join('');
         }
 
         async function refreshExchangeRates() {
@@ -1144,6 +1339,7 @@
             updateAccountDropdown();
             updateSavings();
             renderGoals();
+            renderRecurringList();
 
             const filterValue = monthFilter.value;
             const { totals, expenseCategories } = computeMonthTotals(filterValue);
@@ -1160,10 +1356,14 @@
         /* =========================================================
          * Eventos: filtro de mes / presupuesto
          * ========================================================= */
-        monthFilter.addEventListener('change', updateDashboard);
+        monthFilter.addEventListener('change', () => {
+            txVisibleCount = TX_PAGE_SIZE;
+            updateDashboard();
+        });
 
         document.getElementById('btnClearFilter').addEventListener('click', () => {
             monthFilter.value = '';
+            txVisibleCount = TX_PAGE_SIZE;
             updateDashboard();
         });
 
@@ -1199,6 +1399,8 @@
             document.getElementById('date').value = d;
 
             document.getElementById('editTxIndex').value = String(index);
+            document.getElementById('recurringCheckboxWrapper').classList.add('hidden');
+            isRecurringCheckbox.checked = false;
             const btn = document.getElementById('btnSubmitTx');
             btn.innerText = 'Actualizar';
             btn.classList.replace('bg-indigo-600', 'bg-yellow-500');
@@ -1212,6 +1414,7 @@
             form.reset();
             document.getElementById('date').value = new Date().toISOString().split('T')[0];
             populateCategoryOptions(typeSelect.value);
+            document.getElementById('recurringCheckboxWrapper').classList.remove('hidden');
             const btn = document.getElementById('btnSubmitTx');
             btn.innerText = 'Agregar Transacción';
             btn.classList.replace('bg-yellow-500', 'bg-indigo-600');
@@ -1261,6 +1464,24 @@
                 cancelEditTx();
             } else {
                 state.transactions.push(newTransaction);
+
+                if (isRecurringCheckbox.checked) {
+                    const day = Number(dateVal.split('-')[2]) || 1;
+                    state.recurring.push({
+                        id: genId(),
+                        type: newTransaction.type,
+                        category: newTransaction.category,
+                        amount: newTransaction.amount,
+                        description: newTransaction.description,
+                        accountId: newTransaction.accountId,
+                        dayOfMonth: Math.min(day, 28),
+                        active: true,
+                        lastGeneratedMonth: getYearMonth(dateVal),
+                        createdAt: new Date().toISOString()
+                    });
+                    persistRecurring();
+                }
+
                 form.reset();
                 document.getElementById('date').value = new Date().toISOString().split('T')[0];
                 populateCategoryOptions(typeSelect.value);
@@ -1404,6 +1625,7 @@
                 savings: state.savings,
                 goals: state.goals,
                 goalContributions: state.goalContributions,
+                recurring: state.recurring,
                 exportDate: new Date().toISOString()
             };
             const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
@@ -1444,8 +1666,16 @@
                 Array.isArray(data.goalContributions) &&
                 data.goalContributions.every(c => c && typeof c === 'object' && Number.isFinite(parseFloat(c.amount)) && c.goalId)
             );
+            const recurringOk = data.recurring === undefined || (
+                Array.isArray(data.recurring) &&
+                data.recurring.every(r =>
+                    r && typeof r === 'object' &&
+                    (r.type === 'ingreso' || r.type === 'gasto') &&
+                    Number.isFinite(parseFloat(r.amount))
+                )
+            );
 
-            return txOk && svOk && goalsOk && contribOk;
+            return txOk && svOk && goalsOk && contribOk && recurringOk;
         }
 
         function importFromJSON(event) {
@@ -1498,6 +1728,14 @@
                         id: c.id || genId(),
                         amount: parseFloat(c.amount) || 0
                     }));
+                    state.recurring = (data.recurring || []).map(r => ({
+                        ...r,
+                        id: r.id || genId(),
+                        amount: parseFloat(r.amount) || 0,
+                        dayOfMonth: (Number.isFinite(r.dayOfMonth) && r.dayOfMonth >= 1 && r.dayOfMonth <= 28) ? r.dayOfMonth : 1,
+                        active: typeof r.active === 'boolean' ? r.active : true,
+                        lastGeneratedMonth: /^\d{4}-\d{2}$/.test(r.lastGeneratedMonth || '') ? r.lastGeneratedMonth : getYearMonth(new Date().toISOString().split('T')[0])
+                    }));
                     state.targetGasto = Number.isFinite(parseFloat(data.targetGasto)) ? parseFloat(data.targetGasto) : 1000;
                     state.targetCurrency = ['EUR', 'USD', 'ARS'].includes(data.targetCurrency) ? data.targetCurrency : 'EUR';
 
@@ -1505,10 +1743,13 @@
                     persistSavings();
                     persistGoals();
                     persistGoalContributions();
+                    persistRecurring();
                     persistBudget();
 
                     budgetInput.value = state.targetGasto;
                     budgetCurrency.value = state.targetCurrency;
+                    txVisibleCount = TX_PAGE_SIZE;
+                    processRecurringTransactions();
                     updateDashboard();
                     alert('¡Datos restaurados con éxito! (se descargó también un backup de tus datos anteriores)');
                 }
@@ -1538,6 +1779,7 @@
         /* =========================================================
          * Arranque
          * ========================================================= */
+        processRecurringTransactions();
         updateDashboard();
 
         // Intento de actualización de cotización en segundo plano, solo si:
