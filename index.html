@@ -107,12 +107,6 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Categoría</label>
                             <select id="category" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:ring-indigo-500 focus:border-indigo-500">
-                                <option value="Comida">Comida</option>
-                                <option value="Transporte">Transporte</option>
-                                <option value="Servicios">Servicios</option>
-                                <option value="Ocio">Ocio</option>
-                                <option value="Salario">Salario (Ingreso)</option>
-                                <option value="Otros">Otros</option>
                             </select>
                         </div>
                         <div>
@@ -160,6 +154,25 @@
                         <p class="text-xs font-bold text-gray-500">ARS</p>
                         <p id="totalARS" class="text-sm font-bold text-gray-800">$ 0</p>
                     </div>
+                </div>
+
+                <!-- Patrimonio Consolidado (opcional, requiere internet para actualizar la cotización) -->
+                <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3 mb-4">
+                    <div class="flex justify-between items-center mb-1 gap-2">
+                        <p class="text-xs font-bold text-indigo-700 whitespace-nowrap"><i class="fa-solid fa-globe mr-1"></i>Patrimonio Consolidado</p>
+                        <div class="flex items-center gap-1">
+                            <select id="consolidatedCurrency" class="text-xs rounded border border-gray-300 p-1 bg-white">
+                                <option value="ARS">en ARS</option>
+                                <option value="USD">en USD</option>
+                                <option value="EUR">en EUR</option>
+                            </select>
+                            <button type="button" id="btnRefreshRates" title="Actualizar cotización (requiere internet)" class="text-indigo-600 hover:text-indigo-800 text-xs p-1.5">
+                                <i class="fa-solid fa-rotate"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <p id="consolidatedTotal" class="text-xl font-bold text-indigo-900">—</p>
+                    <p id="consolidatedStatus" class="text-[10px] text-gray-500 mt-1">Sin cotización disponible todavía.</p>
                 </div>
 
                 <form id="savingsForm" class="space-y-4 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-inner">
@@ -406,14 +419,35 @@
         persistGoals();
         persistGoalContributions();
 
+        // Las categorías de ingreso y gasto ahora son listas separadas: antes se mezclaban
+        // en un mismo <select>, lo que era confuso al cargar un ingreso.
+        const expenseCategories = ['Comida', 'Transporte', 'Servicios', 'Ocio', 'Salud', 'Otros'];
+        const incomeCategories = ['Salario', 'Freelance', 'Regalo', 'Inversiones', 'Reembolso', 'Otro Ingreso'];
+
         const categoryIcons = {
             'Comida': '<i class="fa-solid fa-utensils text-orange-500 w-5"></i>',
             'Transporte': '<i class="fa-solid fa-bus text-blue-500 w-5"></i>',
             'Servicios': '<i class="fa-solid fa-bolt text-yellow-500 w-5"></i>',
             'Ocio': '<i class="fa-solid fa-gamepad text-purple-500 w-5"></i>',
+            'Salud': '<i class="fa-solid fa-heart-pulse text-red-400 w-5"></i>',
             'Salario': '<i class="fa-solid fa-money-bill-wave text-green-500 w-5"></i>',
+            'Freelance': '<i class="fa-solid fa-laptop-code text-indigo-500 w-5"></i>',
+            'Regalo': '<i class="fa-solid fa-gift text-pink-500 w-5"></i>',
+            'Inversiones': '<i class="fa-solid fa-chart-line text-emerald-500 w-5"></i>',
+            'Reembolso': '<i class="fa-solid fa-rotate-left text-cyan-500 w-5"></i>',
+            'Otro Ingreso': '<i class="fa-solid fa-sack-dollar text-green-600 w-5"></i>',
             'Otros': '<i class="fa-solid fa-box text-gray-500 w-5"></i>'
         };
+
+        function populateCategoryOptions(selectedType, forcedValue) {
+            const categorySelect = document.getElementById('category');
+            const list = selectedType === 'ingreso' ? incomeCategories : expenseCategories;
+            const previousValue = forcedValue !== undefined ? forcedValue : categorySelect.value;
+            categorySelect.innerHTML = list.map(c => `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join('');
+            if (list.includes(previousValue)) {
+                categorySelect.value = previousValue;
+            }
+        }
 
         /* =========================================================
          * Referencias al DOM
@@ -434,11 +468,18 @@
         const budgetCurrency = document.getElementById('budgetCurrency');
         const transactionAccount = document.getElementById('transactionAccount');
         const chartTitle = document.getElementById('chartTitle');
+        const typeSelect = document.getElementById('type');
+        const consolidatedCurrencySelect = document.getElementById('consolidatedCurrency');
+        const consolidatedTotalEl = document.getElementById('consolidatedTotal');
+        const consolidatedStatusEl = document.getElementById('consolidatedStatus');
+        const btnRefreshRates = document.getElementById('btnRefreshRates');
         let annualChartInstance = null;
 
         budgetInput.value = state.targetGasto;
         budgetCurrency.value = state.targetCurrency;
         document.getElementById('date').value = new Date().toISOString().split('T')[0];
+        populateCategoryOptions(typeSelect.value);
+        typeSelect.addEventListener('change', () => populateCategoryOptions(typeSelect.value));
 
         const hoy = new Date();
         const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
@@ -985,6 +1026,118 @@
         yearFilter.addEventListener('change', renderAnnualChart);
 
         /* =========================================================
+         * Patrimonio Consolidado (cotizaciones vía API, opcional y offline-first)
+         *
+         * IMPORTANTE: esto es 100% opcional. Si no hay conexión, o la API
+         * no responde, la app sigue funcionando normal para cargar gastos
+         * e ingresos del día a día — simplemente esta tarjeta muestra
+         * "sin cotización" y usa el último valor guardado en localStorage.
+         * ========================================================= */
+        const EXCHANGE_CACHE_KEY = 'exchangeRatesCache';
+        const EXCHANGE_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12hs: la fuente actualiza ~1 vez por día
+
+        state.exchangeRates = safeParse(safeGetItem(EXCHANGE_CACHE_KEY), null);
+        if (!state.exchangeRates || typeof state.exchangeRates !== 'object' || !state.exchangeRates.rates) {
+            state.exchangeRates = null;
+        }
+
+        consolidatedCurrencySelect.value = safeGetItem('consolidatedCurrency') || 'ARS';
+
+        function convertAmount(amount, fromCurrency, toCurrency) {
+            if (fromCurrency === toCurrency) return amount;
+            if (!state.exchangeRates || !state.exchangeRates.rates) return null;
+            const rFrom = state.exchangeRates.rates[fromCurrency];
+            const rTo = state.exchangeRates.rates[toCurrency];
+            if (!rFrom || !rTo) return null;
+            // Las tasas están expresadas como "1 USD = X moneda", así que convertimos
+            // pasando primero por USD como moneda puente.
+            return (amount / rFrom) * rTo;
+        }
+
+        function renderConsolidatedPatrimony() {
+            const targetCurrency = consolidatedCurrencySelect.value;
+
+            // Patrimonio total por moneda = saldo en cuentas + lo ahorrado en objetivos
+            // (las transferencias a objetivos no crean ni destruyen patrimonio, solo lo reubican).
+            const totalsByCurrency = { EUR: 0, USD: 0, ARS: 0 };
+            state.savings.forEach(s => {
+                totalsByCurrency[s.currency] = (totalsByCurrency[s.currency] || 0) + getAccountBalance(s.id);
+            });
+            state.goals.forEach(g => {
+                totalsByCurrency[g.currency] = (totalsByCurrency[g.currency] || 0) + getGoalSaved(g.id);
+            });
+
+            let total = 0;
+            const missing = [];
+            Object.keys(totalsByCurrency).forEach(cur => {
+                const amt = totalsByCurrency[cur];
+                if (!amt) return;
+                if (cur === targetCurrency) {
+                    total += amt;
+                    return;
+                }
+                const converted = convertAmount(amt, cur, targetCurrency);
+                if (converted === null) {
+                    missing.push(cur);
+                } else {
+                    total += converted;
+                }
+            });
+
+            if (!state.exchangeRates) {
+                consolidatedTotalEl.textContent = 'Sin cotización';
+                consolidatedStatusEl.textContent = 'Conectate a internet una vez (botón ↻) para habilitar el total consolidado. No hace falta para cargar gastos.';
+                return;
+            }
+
+            consolidatedTotalEl.textContent = formatMoney(total, targetCurrency);
+
+            if (missing.length > 0) {
+                consolidatedStatusEl.textContent = `No se pudo convertir: ${missing.join(', ')} (moneda no disponible en la cotización).`;
+                return;
+            }
+
+            const updated = new Date(state.exchangeRates.fetchedAt);
+            const fecha = updated.toLocaleDateString();
+            const hora = updated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            consolidatedStatusEl.textContent = `Cotización del ${fecha} ${hora} · Rates by exchangerate-api.com`;
+        }
+
+        async function refreshExchangeRates() {
+            if (!navigator.onLine) {
+                consolidatedStatusEl.textContent = 'Estás sin conexión: se sigue mostrando la última cotización guardada.';
+                return;
+            }
+
+            btnRefreshRates.classList.add('animate-spin');
+            try {
+                const res = await fetch('https://open.er-api.com/v6/latest/USD');
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                if (!data || !data.rates) throw new Error('Respuesta inválida de la API de cotizaciones');
+
+                state.exchangeRates = { base: 'USD', rates: data.rates, fetchedAt: Date.now() };
+                safeSetItem(EXCHANGE_CACHE_KEY, JSON.stringify(state.exchangeRates));
+            } catch (err) {
+                // Fallo silencioso a propósito: sin conexión, CORS bloqueado, API caída, etc.
+                // no debe interrumpir el uso normal de la app.
+                console.warn('[fx] No se pudo actualizar la cotización, se mantiene la última guardada.', err);
+                if (!state.exchangeRates) {
+                    consolidatedStatusEl.textContent = 'No se pudo obtener la cotización ahora. Probá de nuevo más tarde.';
+                }
+            } finally {
+                btnRefreshRates.classList.remove('animate-spin');
+                renderConsolidatedPatrimony();
+            }
+        }
+
+        consolidatedCurrencySelect.addEventListener('change', () => {
+            safeSetItem('consolidatedCurrency', consolidatedCurrencySelect.value);
+            renderConsolidatedPatrimony();
+        });
+        btnRefreshRates.addEventListener('click', refreshExchangeRates);
+
+        /* =========================================================
          * Orquestador principal
          * ========================================================= */
         function updateDashboard() {
@@ -1001,6 +1154,7 @@
             updateChart(expenseCategories);
 
             renderAnnualChart();
+            renderConsolidatedPatrimony();
         }
 
         /* =========================================================
@@ -1032,7 +1186,7 @@
             const t = state.transactions[index];
             if (!t) return;
             document.getElementById('type').value = t.type;
-            document.getElementById('category').value = t.category;
+            populateCategoryOptions(t.type, t.category);
             document.getElementById('amount').value = t.amount;
             document.getElementById('description').value = t.description || '';
             if (t.accountId) document.getElementById('transactionAccount').value = t.accountId;
@@ -1057,6 +1211,7 @@
             document.getElementById('editTxIndex').value = '-1';
             form.reset();
             document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            populateCategoryOptions(typeSelect.value);
             const btn = document.getElementById('btnSubmitTx');
             btn.innerText = 'Agregar Transacción';
             btn.classList.replace('bg-yellow-500', 'bg-indigo-600');
@@ -1108,6 +1263,7 @@
                 state.transactions.push(newTransaction);
                 form.reset();
                 document.getElementById('date').value = new Date().toISOString().split('T')[0];
+                populateCategoryOptions(typeSelect.value);
             }
 
             persistTransactions();
@@ -1383,8 +1539,17 @@
          * Arranque
          * ========================================================= */
         updateDashboard();
+
+        // Intento de actualización de cotización en segundo plano, solo si:
+        // - nunca se descargó, o está desactualizada (> 12hs), y
+        // - el dispositivo dice estar online.
+        // Esto es "mejor esfuerzo": si falla (sin señal real, CORS, API caída),
+        // no afecta en nada al resto de la app.
+        const needsFreshRates = !state.exchangeRates || (Date.now() - state.exchangeRates.fetchedAt) > EXCHANGE_MAX_AGE_MS;
+        if (needsFreshRates && navigator.onLine) {
+            refreshExchangeRates();
+        }
     })();
     </script>
 </body>
 </html>
-
